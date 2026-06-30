@@ -22,6 +22,7 @@
 - [Methodology](#-methodology)
 - [Key Findings](#-key-findings)
 - [Model Performance](#-model-performance)
+- [LINE Assumption Results](#-line-assumption-results)
 - [How the Final Model Works](#-how-the-final-model-works-plain-english)
 - [Installation & Usage](#-installation--usage)
 - [Limitations](#-limitations)
@@ -36,6 +37,8 @@
 This project predicts residential home sale prices in Ames, Iowa using **Linear Regression**, built deliberately from first principles rather than treated as a black box. Every major concept in linear regression is covered end-to-end on a single real dataset: simple and multiple regression derived from raw matrix algebra, gradient descent implemented by hand, all five LINE assumptions tested statistically, regularization (Ridge / Lasso / ElasticNet) tuned via cross-validation, and rigorous evaluation through K-Fold validation and learning curves.
 
 **Goal:** predict `SalePrice` for a home from its physical, locational, and qualitative attributes — while being able to explain *why* the model predicts what it does, not just *what* it predicts.
+
+**Final result:** a cross-validated Ridge Regression model explaining **95.3%** of price variation, selected specifically for its stability across data splits, not just its raw accuracy.
 
 ---
 
@@ -100,40 +103,52 @@ house-price-prediction/
 
 **Quality alone explains nearly two-thirds of price variation.** `Overall Qual` — a single 1–10 rating — produces an R² of **0.644** on its own (Phase 4). Before factoring in size, location, or age, simply knowing how well-built a house is gets you most of the way to predicting its price.
 
-**All features together explain 95% of price variation.** Multiple Linear Regression using all 188 encoded features reached a test R² of **0.9522** (RMSE ≈ 0.093 in log-space, roughly ±9% / ~$16–18k typical error in dollar terms) — confirming that price is genuinely a multi-factor outcome, not dominated by one or two variables.
+**All features together explain over 95% of price variation.** Multiple Linear Regression using all 188 encoded features reached a test R² of **0.9523** (Phase 5) — confirming price is genuinely a multi-factor outcome, not dominated by one or two variables.
+
+**Cross-validation told a more honest story than the single train/test split.** The unregularized model looked strong on the original 80/20 split (test R² = 0.9523, even slightly exceeding its own training score) — but proper 5-fold cross-validation revealed its *true* average performance was only **0.900**, swinging between 0.874 and 0.922 depending on the fold (std = 0.018). A single split had simply gotten lucky.
+
+**Regularization didn't just improve accuracy — it cut prediction variance nearly in half.** Ridge's cross-validated mean R² rose to **0.9174** while its fold-to-fold standard deviation dropped to **0.011**, a ~40% reduction in variance versus the unregularized model. This is the strongest evidence in the whole project that regularization was worth doing: a more *stable* model, not just a marginally more accurate one.
 
 **Engineered features beat raw ones.** A hand-built `Total SF` feature (basement + 1st floor + 2nd floor combined) correlated more strongly with price (**r = 0.832**) than any single original square-footage column — the model benefits from being handed the *sum* directly rather than discovering the relationship on its own.
 
-**One-hot encoding manufactures multicollinearity.** After encoding categorical variables, **62 of 188 features** had a Variance Inflation Factor above 10; a few (`Exterior 1st_PreCast` / `Exterior 2nd_PreCast`) were mathematically infinite, caused by a single rare category appearing identically across two columns. This is precisely the failure mode Ridge regression is designed to absorb.
+**One-hot encoding manufactures multicollinearity.** After encoding categorical variables, **62 of 188 features** had a Variance Inflation Factor above 10; a few (`Exterior 1st_PreCast` / `Exterior 2nd_PreCast`) were mathematically infinite, caused by a single rare category appearing identically across two columns — precisely the failure mode Ridge is designed to absorb.
 
-**Aggressive feature selection costs real accuracy.** Requiring three different selection methods (correlation filter, RFE, Lasso) to *all* agree left only 10 features, dropping R² from 0.952 to 0.868. Consensus filtering is safe but conservative — it discards features that matter through interaction even when they don't stand out individually.
-
-> *`[ Add 1–2 more findings here once Phase 8/9 are complete — e.g. which regularized model won, and how stable it was across CV folds. ]`*
+**The final model choice came down to a coin flip — and that's an honest finding too.** Ridge, Lasso, and ElasticNet converged to nearly identical cross-validated performance (0.9174, 0.9164, 0.9172 — all within 0.001 of each other). Ridge was selected by the smallest possible margin, but Lasso achieved almost the same score using **36 fewer features** (151 vs. 187) — a genuinely close call where interpretability, not raw accuracy, would decide the winner in a real deployment.
 
 ---
 
 ## 📈 Model Performance
 
-| Model | Features Used | Test RMSE | Test R² | CV Mean R² |
-|---|---:|---:|---:|---:|
-| Simple LR (`Overall Qual` only) | 1 | — | 0.6441 | — |
-| Multiple LR (all features) | 188 | 0.0926 | 0.9522 | — |
-| Multiple LR — Adjusted R² | 188 | — | 0.9296 | — |
-| Feature-Selected LR (consensus, 10 features) | 10 | — | 0.8684 | — |
-| Ridge (tuned) | `[fill in]` | `[fill in]` | `[fill in]` | `[fill in]` |
-| Lasso (tuned) | `[fill in]` | `[fill in]` | `[fill in]` | `[fill in]` |
-| ElasticNet (tuned) | `[fill in]` | `[fill in]` | `[fill in]` | `[fill in]` |
-| **🏆 Final Selected Model** | `[fill in]` | `[fill in]` | `[fill in]` | `[fill in]` |
+| Model | Features Used | Test RMSE | Test R² | CV Mean R² | CV Std R² |
+|---|---:|---:|---:|---:|---:|
+| Simple LR (`Overall Qual` only) | 1 | — | 0.6441 | — | — |
+| Multiple LR (all 188 features) | 188 | 0.0926 | 0.9523 | 0.9000 | 0.0178 |
+| Feature-Selected LR (consensus, 10 features) | 10 | — | 0.8684 | — | — |
+| Lasso (α=0.0001) | 151 | 0.0921 | 0.9527 | 0.9164 | 0.0107 |
+| ElasticNet | 147 | 0.0920 | 0.9529 | 0.9172 | 0.0111 |
+| **🏆 Final Model — Ridge (α=10)** | **187** | **0.0920** | **0.9529** | **0.9174** | **0.0114** |
 
-> Run `09_evaluation_and_comparison.ipynb` end-to-end and copy Cells 5–9's output into the bracketed cells above before publishing this repo.
+**Reading RMSE in dollars:** since `SalePrice` was log-transformed, the final model's test RMSE of 0.0920 approximates a **±9–10% average prediction error** — roughly **$17,000** on a typical $180,000 home.
 
-**Reading RMSE in dollars:** since `SalePrice` was log-transformed, a test RMSE of 0.0926 approximates a **±9% average prediction error** — roughly $16,000–$18,000 on a typical $180,000 home.
+---
+
+## ✅ LINE Assumption Results
+
+| Assumption | Test Used | Result | Status |
+|---|---|---:|---|
+| **L**inearity | Residual vs. fitted plot (visual) | See `06_assumption_testing.ipynb`, Cell 3 | Visual inspection |
+| **I**ndependence | Durbin-Watson | DW = 2.066 | ✅ Pass |
+| **N**ormality | Shapiro-Wilk | p ≈ 0.0000 | ⚠️ Fails formally* |
+| **E**qual Variance | Breusch-Pagan | p ≈ 0.0000 | ⚠️ Mild heteroscedasticity |
+| No Multicollinearity | VIF | 62 / 188 features > 10 | ❌ Violated (mitigated by Ridge) |
+
+*Shapiro-Wilk is extremely sensitive at n > 2,900 — even minor, practically harmless deviations from normality register as statistically significant. The Q-Q plot was used alongside the p-value to confirm this wasn't a severe violation.
 
 ---
 
 ## 🧠 How the Final Model Works (Plain English)
 
-Strip away the math, and the model does something close to what an experienced appraiser does intuitively: it starts from the average home price in Ames, then adjusts up or down based on dozens of signals — adding value for higher overall quality, more living space, a newer or recently-remodeled build, a larger garage, and a more desirable neighborhood, while subtracting value for the opposite. Regularization (Ridge/Lasso) prevents the model from over-trusting any single feature when several features say the same thing (like garage size and garage capacity), keeping the final price estimate stable rather than swinging wildly based on one column.
+The final model — **Ridge Regression** — does something close to what an experienced appraiser does intuitively: it starts from the average home price in Ames, then adjusts up or down based on all 187 available signals at once — quality, living space, age, garage size, neighborhood, and more — without fully discarding any of them. Where Ridge differs from plain Linear Regression is restraint: when two features say almost the same thing (like garage capacity and garage square footage), Ridge spreads the credit between them instead of letting one swing wildly. That restraint is exactly why its cross-validated predictions stayed far more consistent across different slices of the data than the unregularized model's did.
 
 ---
 
@@ -141,7 +156,7 @@ Strip away the math, and the model does something close to what an experienced a
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/<your-username>/house-price-prediction.git
+git clone https://github.com/feroz-crash/house-price-prediction.git
 cd house-price-prediction
 
 # 2. Create a virtual environment (recommended)
@@ -166,7 +181,7 @@ Each notebook is numbered and self-contained — run them sequentially from `01`
 
 ## ⚠️ Limitations
 
-This model has boundaries worth stating honestly rather than hiding. The data covers a single market — Ames, Iowa, 2006–2010 — so coefficients learned here, especially neighborhood effects, won't transfer to other cities or time periods without retraining. Several LINE assumptions were only partially satisfied: mild heteroscedasticity and residual multicollinearity remain present even after regularization, so individual coefficients should be read as directional rather than precise. The model is also linear by construction — it cannot capture genuine non-linear interactions (a renovated kitchen mattering far more in an expensive neighborhood than a cheap one, for example) beyond the single interaction term (`Overall Score`) engineered in Phase 7.
+This model has boundaries worth stating honestly rather than hiding. The data covers a single market — Ames, Iowa, 2006–2010 — so coefficients learned here, especially neighborhood effects, won't transfer to other cities or time periods without retraining. Two LINE assumptions failed formal statistical tests: residuals were not perfectly normal (Shapiro-Wilk p≈0, though this is a known large-sample artifact rather than a severe distortion) and showed mild heteroscedasticity (Breusch-Pagan p≈0), meaning prediction intervals are likely narrower than ideal for the most expensive homes. Multicollinearity, while substantially reduced by Ridge, was not eliminated at the raw feature level — 62 of 188 features still exceed VIF=10 — so individual coefficients should be read as directional rather than precise causal effects. The model is also linear by construction and cannot capture genuine non-linear interactions beyond the single interaction term (`Overall Score`) engineered in Phase 7.
 
 ---
 
@@ -184,8 +199,8 @@ Next steps that would meaningfully extend this project: tree-based models (Rando
 
 ## 👤 Author
 
-**[Your Name]**
-[GitHub](https://github.com/yourusername) · [LinkedIn](https://linkedin.com/in/yourprofile)
+**Feroz Shaik**
+[GitHub](https://github.com/feroz-crash) · [LinkedIn](https://www.linkedin.com/in/ferozshaik-tech/)
 
 ---
 
